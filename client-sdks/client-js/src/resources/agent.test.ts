@@ -1682,6 +1682,36 @@ describe('Agent signal routes', () => {
     expect(onChunk).toHaveBeenNthCalledWith(1, firstChunk);
     expect(onChunk).toHaveBeenNthCalledWith(2, secondChunk);
   });
+
+  it.each([401, 403])('stops reconnecting after a subscription HTTP %s response', async status => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(createSseResponse([]))
+      .mockImplementation(async () => new Response('Subscription denied', { status }));
+    const agent = new Agent({ ...mockClientOptions, fetch }, 'test-agent');
+
+    const response = await agent.subscribeToThread({ resourceId: 'resource-123', threadId: 'thread-123' });
+
+    await expect(
+      response.processDataStream({ onChunk: vi.fn(), reconnect: { maxRetries: 3, delayMs: 0 } }),
+    ).rejects.toMatchObject({ status, body: undefined });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores a reconnect authorization failure after unsubscribing', async () => {
+    const reconnect = Promise.withResolvers<Response>();
+    const fetch = vi.fn().mockResolvedValueOnce(createSseResponse([])).mockReturnValue(reconnect.promise);
+    const agent = new Agent({ ...mockClientOptions, fetch }, 'test-agent');
+    const response = await agent.subscribeToThread({ resourceId: 'resource-123', threadId: 'thread-123' });
+    const processing = response.processDataStream({ onChunk: vi.fn(), reconnect: { maxRetries: 3, delayMs: 0 } });
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    response.unsubscribe();
+    reconnect.resolve(new Response('Subscription denied', { status: 403 }));
+
+    await expect(processing).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('Agent.stream', () => {

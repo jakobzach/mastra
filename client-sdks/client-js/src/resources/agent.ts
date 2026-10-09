@@ -946,8 +946,16 @@ export class Agent extends BaseResource {
               response = await requestSubscription();
               break;
             } catch (error) {
-              if (isClosed() || attempts >= reconnectOptions.maxRetries) {
-                if (isClosed()) return;
+              if (isClosed()) return;
+              if (
+                typeof error === 'object' &&
+                error !== null &&
+                'status' in error &&
+                (error.status === 401 || error.status === 403)
+              ) {
+                throw error;
+              }
+              if (attempts >= reconnectOptions.maxRetries) {
                 throw error;
               }
             }
