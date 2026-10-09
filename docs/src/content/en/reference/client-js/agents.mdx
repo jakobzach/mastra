@@ -377,6 +377,26 @@ Pass `withInitialHistory: true` (or `{ perPage }`) to receive the stored message
 
 The subscription also exposes `abort(options?)` and `unsubscribe()`. `await subscription.abort({ clearPendingSignals: true })` requests an abort and clears pending signals without closing the subscription. Omit the flag to preserve pending input. `unsubscribe()` closes the subscription without aborting the run.
 
+#### Initial history in React
+
+The React SDK's `useChat()` exposes the subscription's initial-page availability as `initialHistoryPagination: { hasMore: boolean } | undefined`:
+
+```typescript
+import { useChat } from '@mastra/react'
+
+const { messages, initialHistoryPagination } = useChat({
+  agentId: 'support-agent',
+  resourceId: 'user-123',
+  threadId: 'thread-abc',
+  enableThreadSignals: true,
+  withInitialHistory: { perPage: 20 },
+})
+```
+
+`hasMore` comes from the server, even when the history page is empty. The metadata is `undefined` until history arrives, when history is disabled, and after the subscription closes or changes agent, resource, or thread. Resubscribing waits for fresh history.
+
+This value describes the subscription's initial page. Live output and `setMessages()` leave it unchanged. After loading older pages, use the pagination metadata from your explicit page responses to determine whether more pages remain.
+
 ### `abortThread()`
 
 Requests cancellation of the thread's active run. Set `clearPendingSignals: true` to clear pending signals before aborting.

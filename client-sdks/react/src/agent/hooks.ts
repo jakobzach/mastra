@@ -353,6 +353,14 @@ export const useChat = ({
   const [subscriptionHistory, setSubscriptionHistory] = useState<
     { key: string; messages: MastraDBMessage[] } | undefined
   >(undefined);
+  const [subscriptionHistoryPagination, setSubscriptionHistoryPagination] = useState<
+    { key: string; hasMore: boolean } | undefined
+  >(undefined);
+  const paginationKey = JSON.stringify([agentId, resourceId || agentId, threadId, withInitialHistory]);
+  const initialHistoryPagination =
+    withInitialHistory && !threadSignalsDisabled && subscriptionHistoryPagination?.key === paginationKey
+      ? { hasMore: subscriptionHistoryPagination.hasMore }
+      : undefined;
   const historyKey = `${agentId}:${resourceId ?? ''}:${threadId ?? ''}`;
   const hydratedMessages =
     withInitialHistory && subscriptionHistory?.key === historyKey ? subscriptionHistory.messages : initialMessages;
@@ -484,6 +492,7 @@ export const useChat = ({
   };
 
   const closeThreadSubscription = useCallback(() => {
+    setSubscriptionHistoryPagination(undefined);
     const subscription = _threadSubscriptionRef.current;
     if (subscription?.unsubscribe) {
       subscription.unsubscribe();
@@ -589,7 +598,7 @@ export const useChat = ({
 
   const ensureThreadSubscription = useCallback(
     async ({ threadId, resourceId }: { threadId: string; resourceId?: string }) => {
-      const subscriptionKey = `${agentId}:${resourceId ?? ''}:${threadId}:${streamPath ?? ''}`;
+      const subscriptionKey = JSON.stringify([agentId, resourceId, threadId, streamPath, withInitialHistory]);
       if (_threadSubscriptionKeyRef.current === subscriptionKey && _threadSubscriptionPromiseRef.current) {
         await _threadSubscriptionPromiseRef.current;
         return;
@@ -604,6 +613,7 @@ export const useChat = ({
       // still owns it — a newer attempt cleans up after itself.
       const releaseSubscriptionRefs = () => {
         if (_threadSubscriptionAbortRef.current !== subscriptionAbort) return;
+        setSubscriptionHistoryPagination(undefined);
         _threadSubscriptionRef.current = null;
         _threadSubscriptionAbortRef.current = null;
         _threadSubscriptionKeyRef.current = undefined;
@@ -630,6 +640,7 @@ export const useChat = ({
             .processDataStream({
               onChunk: chunk => {
                 if (chunk.type === 'thread-history') {
+                  if (_threadSubscriptionAbortRef.current !== subscriptionAbort) return;
                   // Merge history into `messages` now, as a queued update, so the
                   // live chunks right behind it accumulate onto the stored parts.
                   const history = resolveInitialMessages(chunk.payload.messages);
@@ -640,6 +651,10 @@ export const useChat = ({
                   setSubscriptionHistory({
                     key: `${agentId}:${resourceId ?? ''}:${threadId}`,
                     messages: chunk.payload.messages,
+                  });
+                  setSubscriptionHistoryPagination({
+                    key: JSON.stringify([agentId, resourceId || agentId, threadId, withInitialHistory]),
+                    hasMore: chunk.payload.hasMore,
                   });
                   return;
                 }
@@ -1409,6 +1424,7 @@ export const useChat = ({
     activeRunId: isRunning || isAwaitingToolApproval ? _currentRunId.current : undefined,
     isAwaitingToolApproval,
     messages,
+    initialHistoryPagination,
     tasks,
     approveToolCall,
     declineToolCall,
