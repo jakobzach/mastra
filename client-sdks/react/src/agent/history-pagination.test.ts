@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { MastraDBMessage } from '@mastra/core/agent/message-list';
-import type { ChunkType } from '@mastra/core/stream';
+import type { ChunkType, ThreadHistoryChunk } from '@mastra/core/stream';
+import { ChunkFrom } from '@mastra/core/stream';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { createElement } from 'react';
@@ -14,13 +15,13 @@ const scope = { agentId: 'agent-1', resourceId: 'resource-1', threadId: 'thread-
 const wrapper = ({ children }: { children: ReactNode }) =>
   createElement(MastraClientProvider, { baseUrl: 'http://localhost:4111', customFetch: fetchMock, children });
 
-const history = (hasMore: boolean, messages: MastraDBMessage[] = []): ChunkType => ({
+const history = (hasMore: boolean, messages: MastraDBMessage[] = []): ThreadHistoryChunk => ({
   type: 'thread-history',
   runId: '',
-  from: 'AGENT',
+  from: ChunkFrom.AGENT,
   payload: { messages, hasMore },
 });
-const push = (chunk: ChunkType, index = 0) => {
+const push = (chunk: ChunkType | ThreadHistoryChunk, index = 0) => {
   const subscription = subscriptions[index];
   if (!subscription) throw new Error('Subscription not established');
   subscription.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
@@ -157,9 +158,9 @@ describe('useChat initial history pagination', () => {
     await act(async () => push(history(true)));
     await waitFor(() => expect(result.current.initialHistoryPagination).toEqual({ hasMore: true }));
     await act(async () => {
-      push({ type: 'start', runId: 'run-1', from: 'AGENT', payload: { messageId: 'message-1' } });
-      push({ type: 'text-start', runId: 'run-1', from: 'AGENT', payload: { id: 'text-1' } });
-      push({ type: 'text-delta', runId: 'run-1', from: 'AGENT', payload: { id: 'text-1', text: 'hello' } });
+      push({ type: 'start', runId: 'run-1', from: ChunkFrom.AGENT, payload: { messageId: 'message-1' } });
+      push({ type: 'text-start', runId: 'run-1', from: ChunkFrom.AGENT, payload: { id: 'text-1' } });
+      push({ type: 'text-delta', runId: 'run-1', from: ChunkFrom.AGENT, payload: { id: 'text-1', text: 'hello' } });
     });
     await waitFor(() => expect(result.current.messages).toHaveLength(1));
     expect(result.current.initialHistoryPagination).toEqual({ hasMore: true });
